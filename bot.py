@@ -490,7 +490,7 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = _ai.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-lite",
             contents=prompt,
         )
         await update.message.reply_text(response.text)
