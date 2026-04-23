@@ -488,12 +488,18 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{user_text}"
     )
 
-    response = _ai.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-    )
-
-    await update.message.reply_text(response.text)
+    try:
+        response = _ai.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+        )
+        await update.message.reply_text(response.text)
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            await update.message.reply_text("Gemini đang bận, thử lại sau 1 phút nhé!")
+        else:
+            await update.message.reply_text(f"Lỗi AI: {err[:200]}")
 
 
 # ── Main ─────────────────────────────────────────────────────────
