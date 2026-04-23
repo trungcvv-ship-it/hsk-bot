@@ -13,7 +13,7 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8")
 
-import anthropic
+from google import genai
 import redis as redis_lib
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -37,11 +37,11 @@ PROGRESS_FILE = DATA_DIR / "progress.json"
 REDIS_URL = os.getenv("REDIS_URL")
 REDIS_KEY = "hsk_progress"
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PIANO_MINUTES = 30
 
 _redis = redis_lib.from_url(REDIS_URL) if REDIS_URL else None
-_ai = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+_ai = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 SYSTEM_PROMPT = """Bạn là trợ lý học tập cá nhân, giao tiếp bằng tiếng Việt.
 
@@ -469,7 +469,7 @@ async def job_daily_summary(context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _ai:
-        await update.message.reply_text("Chưa cấu hình ANTHROPIC_API_KEY.")
+        await update.message.reply_text("Chưa cấu hình GEMINI_API_KEY.")
         return
 
     user_text = update.message.text.strip()
@@ -479,22 +479,21 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
 
     progress = load_progress()
-    level, done, total = current_hsk_level(progress)
-    total_learned = len(progress["learned"])
+    level, done, _ = current_hsk_level(progress)
 
-    user_context = (
-        f"[Ngữ cảnh: đang học HSK{level}, đã học {total_learned} từ, "
-        f"streak {progress['streak']} ngày]"
+    prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"[Ngữ cảnh người dùng: đang học HSK{level}, "
+        f"đã học {len(progress['learned'])} từ, streak {progress['streak']} ngày]\n\n"
+        f"{user_text}"
     )
 
-    response = _ai.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"{user_context}\n\n{user_text}"}],
+    response = _ai.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
     )
 
-    await update.message.reply_text(response.content[0].text)
+    await update.message.reply_text(response.text)
 
 
 # ── Main ─────────────────────────────────────────────────────────
