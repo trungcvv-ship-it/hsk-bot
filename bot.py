@@ -274,6 +274,8 @@ async def quiz_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     correct = word["meaning"]
     is_correct = chosen.strip() == correct.strip() or correct.startswith(chosen.strip())
 
+    from telegram.error import BadRequest as TGBadRequest
+
     if is_correct:
         if hanzi in progress["quiz_pending"]:
             progress["quiz_pending"].remove(hanzi)
@@ -282,19 +284,25 @@ async def quiz_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         save_progress(progress)
 
         remaining = len(progress["quiz_pending"])
-        await query.edit_message_text(
-            f"✅ *Đúng!*  {hanzi} = {correct}\n"
-            f"{'🎉 Xong tất cả! /tiendo để xem tiến độ' if remaining == 0 else f'Còn {remaining} từ...'}",
-            parse_mode="Markdown",
-        )
+        try:
+            await query.edit_message_text(
+                f"✅ *Đúng!*  {hanzi} = {correct}\n"
+                f"{'🎉 Xong tất cả! /tiendo để xem tiến độ' if remaining == 0 else f'Còn {remaining} từ...'}",
+                parse_mode="Markdown",
+            )
+        except TGBadRequest:
+            pass
         if remaining > 0:
             await asyncio.sleep(1)
             await _send_quiz(query.message.reply_text, progress)
     else:
-        await query.edit_message_text(
-            f"❌ *Sai!*  _{hanzi}_ = *{correct}*\n_Gõ /ontap để thử lại_",
-            parse_mode="Markdown",
-        )
+        try:
+            await query.edit_message_text(
+                f"❌ *Sai!*  _{hanzi}_ = *{correct}*\n_Gõ /ontap để thử lại_",
+                parse_mode="Markdown",
+            )
+        except TGBadRequest:
+            pass
 
 
 async def cmd_tiendo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
