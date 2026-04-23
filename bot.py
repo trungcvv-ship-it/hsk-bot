@@ -13,7 +13,7 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8")
 
-from google import genai
+import google.generativeai as genai
 import redis as redis_lib
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -41,7 +41,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PIANO_MINUTES = 30
 
 _redis = redis_lib.from_url(REDIS_URL) if REDIS_URL else None
-_ai = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    _ai = genai.GenerativeModel("gemini-2.0-flash")
+else:
+    _ai = None
 
 SYSTEM_PROMPT = """Bạn là trợ lý học tập cá nhân, giao tiếp bằng tiếng Việt.
 
@@ -497,10 +501,7 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        response = _ai.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
+        response = await _ai.generate_content_async(prompt)
         await update.message.reply_text(response.text)
     except Exception as e:
         err = str(e)
