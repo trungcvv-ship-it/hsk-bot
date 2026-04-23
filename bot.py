@@ -13,6 +13,7 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8")
 
+import anthropic
 import redis as redis_lib
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -21,6 +22,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -34,9 +37,28 @@ PROGRESS_FILE = DATA_DIR / "progress.json"
 REDIS_URL = os.getenv("REDIS_URL")
 REDIS_KEY = "hsk_progress"
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 PIANO_MINUTES = 30
 
 _redis = redis_lib.from_url(REDIS_URL) if REDIS_URL else None
+_ai = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+SYSTEM_PROMPT = """Bạn là trợ lý học tập cá nhân, giao tiếp bằng tiếng Việt.
+
+Người dùng đang:
+- Học tiếng Trung theo lộ trình HSK1 → HSK3 (mục tiêu hoàn thành HSK3 vào tháng 12/2026)
+- Tập piano mỗi ngày (mục tiêu 30 phút/ngày)
+
+Bạn có thể giúp:
+- Giải thích từ vựng tiếng Trung: pinyin, thanh điệu, nghĩa, ví dụ
+- Giải thích ngữ pháp tiếng Trung đơn giản
+- So sánh từ dễ nhầm lẫn
+- Tư vấn phương pháp học HSK hiệu quả
+- Động viên và theo dõi tiến độ học
+- Tư vấn về tập piano, bài tập, kỹ thuật cơ bản
+- Trả lời câu hỏi thông thường
+
+Phong cách: thân thiện, ngắn gọn, dùng emoji phù hợp. Khi giải thích tiếng Trung luôn kèm pinyin và thanh điệu."""
 
 
 def load_hsk_data():
@@ -443,6 +465,38 @@ async def job_daily_summary(context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ── AI Chat handler ─────────────────────────────────────────────
+
+async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _ai:
+        await update.message.reply_text("Chưa cấu hình ANTHROPIC_API_KEY.")
+        return
+
+    user_text = update.message.text.strip()
+    if not user_text:
+        return
+
+    await update.message.chat.send_action("typing")
+
+    progress = load_progress()
+    level, done, total = current_hsk_level(progress)
+    total_learned = len(progress["learned"])
+
+    user_context = (
+        f"[Ngữ cảnh: đang học HSK{level}, đã học {total_learned} từ, "
+        f"streak {progress['streak']} ngày]"
+    )
+
+    response = _ai.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": f"{user_context}\n\n{user_text}"}],
+    )
+
+    await update.message.reply_text(response.content[0].text)
+
+
 # ── Main ─────────────────────────────────────────────────────────
 
 def main():
@@ -466,6 +520,7 @@ def main():
     app.add_handler(CommandHandler("piano", cmd_piano))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CallbackQueryHandler(quiz_callback, pattern=r"^quiz:"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, cmd_chat))
 
     jq = app.job_queue
     jq.run_daily(job_morning_lesson, time=dtime(7, 0, tzinfo=TZ))
