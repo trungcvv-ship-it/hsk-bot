@@ -41,7 +41,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PIANO_MINUTES = 30
 
 _redis = redis_lib.from_url(REDIS_URL) if REDIS_URL else None
-_ai = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+_ai = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"}) if GEMINI_API_KEY else None
 
 SYSTEM_PROMPT = """Bạn là trợ lý học tập cá nhân, giao tiếp bằng tiếng Việt.
 
@@ -498,7 +498,7 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = _ai.models.generate_content(
-            model="gemini-2.0-flash-lite",
+            model="gemini-1.5-flash",
             contents=prompt,
         )
         await update.message.reply_text(response.text)
